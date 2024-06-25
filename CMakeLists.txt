@@ -17,6 +17,7 @@ set(SOURCES
     src/dsp/DspProcessor.cpp
     src/ui/MainFrame.cpp
     src/ui/KnobControl.cpp
+    src/ui/SpectrumView.cpp
 )
 
 add_executable(WxGuitarAmp ${SOURCES})
