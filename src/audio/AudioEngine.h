@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "dsp/AmpModel.h"
 
 struct AmpParams {
     std::atomic<float> preampVol{5.0f};
@@ -53,6 +54,11 @@ public:
     // Peak levels written by audio thread, read by UI (dBFS)
     float inputPeakDb()  const;
     float outputPeakDb() const;
+
+    // Amp model switching (thread-safe)
+    void      setAmpModel(int index);
+    int       currentAmpModel() const;
+    AmpModel& ampModel(int index);
 
     void processAudio(float* out, const float* in, unsigned int frameCount);
 

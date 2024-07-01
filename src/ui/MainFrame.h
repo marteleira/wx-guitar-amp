@@ -13,17 +13,19 @@ private:
     void BuildUI();
     void OnKnobChanged(wxCommandEvent&);
     void OnHeaderPaint(wxPaintEvent&);
+    void OnModelChanged(wxCommandEvent&);
     void OnInputDevice(wxCommandEvent&);
     void OnOutputDevice(wxCommandEvent&);
     void OnInputGain(wxCommandEvent&);
     void OnOutputGain(wxCommandEvent&);
     void OnTimer(wxTimerEvent&);
     void OnClose(wxCloseEvent&);
+    void ApplyModelToUI(int index);
 
     AudioEngine& m_engine;
 
-    // Header
-    wxPanel* m_header = nullptr;
+    wxPanel*  m_header      = nullptr;
+    wxChoice* m_modelChoice = nullptr;
 
     // I/O panel widgets
     wxChoice*     m_inDevChoice  = nullptr;

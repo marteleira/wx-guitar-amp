@@ -15,6 +15,8 @@ set(SOURCES
     src/main.cpp
     src/audio/AudioEngine.cpp
     src/dsp/DspProcessor.cpp
+    src/dsp/JCM800Model.cpp
+    src/dsp/FenderDeluxeModel.cpp
     src/ui/MainFrame.cpp
     src/ui/KnobControl.cpp
     src/ui/SpectrumView.cpp

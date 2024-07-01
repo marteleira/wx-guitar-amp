@@ -4,7 +4,8 @@
 #include <wx/dcbuffer.h>
 
 enum {
-    ID_INPUT_DEVICE  = wxID_HIGHEST + 1,
+    ID_AMP_MODEL     = wxID_HIGHEST + 1,
+    ID_INPUT_DEVICE,
     ID_OUTPUT_DEVICE,
     ID_INPUT_GAIN,
     ID_OUTPUT_GAIN,
@@ -13,6 +14,7 @@ enum {
 
 wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
     EVT_CLOSE(MainFrame::OnClose)
+    EVT_CHOICE(ID_AMP_MODEL,     MainFrame::OnModelChanged)
     EVT_CHOICE(ID_INPUT_DEVICE,  MainFrame::OnInputDevice)
     EVT_CHOICE(ID_OUTPUT_DEVICE, MainFrame::OnOutputDevice)
     EVT_SLIDER(ID_INPUT_GAIN,    MainFrame::OnInputGain)
@@ -48,7 +50,7 @@ static wxStaticText* dimLabel(wxWindow* p, const wxString& s) {
 // Constructor
 
 MainFrame::MainFrame(AudioEngine& engine)
-    : wxFrame(nullptr, wxID_ANY, "Marshall JCM800 2203",
+    : wxFrame(nullptr, wxID_ANY, "Amp Simulator",
               wxDefaultPosition, wxDefaultSize,
               wxDEFAULT_FRAME_STYLE & ~wxRESIZE_BORDER & ~wxMAXIMIZE_BOX)
     , m_engine(engine)
@@ -64,7 +66,7 @@ void MainFrame::BuildUI() {
     SetBackgroundColour(wxColour(22, 22, 22));
 
     CreateStatusBar();
-    SetStatusText(wxString::Format("Audio running  |  %u Hz  |  JCM800 2203",
+    SetStatusText(wxString::Format("Audio running  |  %u Hz ",
                                    m_engine.getSampleRate()));
 
     // Header 
@@ -73,7 +75,32 @@ void MainFrame::BuildUI() {
     m_header->SetBackgroundStyle(wxBG_STYLE_PAINT);
     m_header->Bind(wxEVT_PAINT, &MainFrame::OnHeaderPaint, this);
 
-    // I/O panel 
+    // Model selector bar 
+    auto* modelBar = new wxPanel(this, wxID_ANY);
+    modelBar->SetBackgroundColour(wxColour(14, 14, 14));
+    modelBar->SetMinSize(wxSize(1, 30));
+
+    wxArrayString modelNames;
+    for (int i = 0; i < 2; ++i)
+        modelNames.Add(wxString::FromUTF8(m_engine.ampModel(i).name()));
+    m_modelChoice = new wxChoice(modelBar, ID_AMP_MODEL,
+                                 wxDefaultPosition, wxDefaultSize, modelNames);
+    m_modelChoice->SetSelection(0);
+    m_modelChoice->SetBackgroundColour(wxColour(35, 35, 35));
+    m_modelChoice->SetForegroundColour(wxColour(200, 200, 185));
+
+    auto* mbLabel = new wxStaticText(modelBar, wxID_ANY, "Amp Model:");
+    mbLabel->SetFont(wxFont(8, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
+    mbLabel->SetForegroundColour(wxColour(110, 110, 100));
+
+    auto* modelRow = new wxBoxSizer(wxHORIZONTAL);
+    modelRow->AddStretchSpacer();
+    modelRow->Add(mbLabel,       0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 6);
+    modelRow->Add(m_modelChoice, 0, wxALIGN_CENTER_VERTICAL);
+    modelRow->AddStretchSpacer();
+    modelBar->SetSizer(modelRow);
+
+    // I/O panel
     auto* ioPanel = new wxPanel(this, wxID_ANY);
     ioPanel->SetBackgroundColour(wxColour(18, 18, 18));
     ioPanel->SetMinSize(wxSize(1, IO_H));
@@ -197,6 +224,7 @@ void MainFrame::BuildUI() {
     // Root sizer 
     auto* root = new wxBoxSizer(wxVERTICAL);
     root->Add(m_header,   0, wxEXPAND);
+    root->Add(modelBar,   0, wxEXPAND);
     root->Add(ioPanel,    0, wxEXPAND);
     root->Add(knobPanel,  0, wxEXPAND);
     SetSizerAndFit(root);
@@ -205,28 +233,52 @@ void MainFrame::BuildUI() {
 
 // Event handlers 
 
+void MainFrame::ApplyModelToUI(int index) {
+    auto& m = m_engine.ampModel(index);
+    auto labels = m.knobLabels();
+    auto defs   = m.knobDefaults();
+
+    KnobControl* knobs[] = { m_kPreamp, m_kBass, m_kMid, m_kTreble, m_kPresence, m_kMaster };
+    for (int i = 0; i < 6; ++i) {
+        knobs[i]->SetKnobLabel(labels[i]);
+        knobs[i]->SetValue(defs[i], true);
+    }
+    m_header->Refresh();
+}
+
+void MainFrame::OnModelChanged(wxCommandEvent& evt) {
+    int sel = evt.GetSelection();
+    m_engine.setAmpModel(sel);
+    ApplyModelToUI(sel);
+}
+
 void MainFrame::OnHeaderPaint(wxPaintEvent&) {
     wxAutoBufferedPaintDC dc(m_header);
     wxSize sz = m_header->GetClientSize();
 
+    const auto& m = m_engine.ampModel(m_engine.currentAmpModel());
+    bool isFender = (m_engine.currentAmpModel() == 1);
+
     dc.SetBackground(wxBrush(wxColour(18, 18, 18)));
     dc.Clear();
 
-    dc.SetBrush(wxBrush(wxColour(120, 90, 20)));
+    // Brand strip: gold for Marshall, dark chrome for Fender
+    wxColour stripCol = isFender ? wxColour(35, 35, 40) : wxColour(120, 90, 20);
+    dc.SetBrush(wxBrush(stripCol));
     dc.SetPen(*wxTRANSPARENT_PEN);
     dc.DrawRectangle(0, 0, 220, sz.y);
 
     dc.SetFont(wxFont(22, wxFONTFAMILY_SWISS, wxFONTSTYLE_ITALIC, wxFONTWEIGHT_BOLD));
-    dc.SetTextForeground(wxColour(248, 240, 210));
-    dc.DrawText("Marshall", 10, 8);
+    dc.SetTextForeground(isFender ? wxColour(160, 200, 255) : wxColour(248, 240, 210));
+    dc.DrawText(m.brand(), 10, 8);
 
     dc.SetFont(wxFont(11, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
     dc.SetTextForeground(wxColour(190, 190, 190));
-    dc.DrawText("JCM800  Master Volume  2203", 228, 8);
+    dc.DrawText(m.name(), 228, 8);
 
     dc.SetFont(wxFont(8, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
     dc.SetTextForeground(wxColour(110, 110, 110));
-    dc.DrawText("100W  Super Lead", 228, 30);
+    dc.DrawText(m.subtitle(), 228, 30);
 
     int ledX = sz.x - 22, ledY = sz.y / 2;
     dc.SetBrush(wxBrush(wxColour(255, 40, 40)));
@@ -252,14 +304,14 @@ void MainFrame::OnKnobChanged(wxCommandEvent& evt) {
 void MainFrame::OnInputDevice(wxCommandEvent& evt) {
     m_engine.setInputDevice(evt.GetSelection());
     m_engine.restart();
-    SetStatusText(wxString::Format("Audio running  |  %u Hz  |  JCM800 2203",
+    SetStatusText(wxString::Format("Audio running  |  %u Hz ",
                                    m_engine.getSampleRate()));
 }
 
 void MainFrame::OnOutputDevice(wxCommandEvent& evt) {
     m_engine.setOutputDevice(evt.GetSelection());
     m_engine.restart();
-    SetStatusText(wxString::Format("Audio running  |  %u Hz  |  JCM800 2203",
+    SetStatusText(wxString::Format("Audio running  |  %u Hz  ",
                                    m_engine.getSampleRate()));
 }
 

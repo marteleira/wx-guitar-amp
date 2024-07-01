@@ -12,8 +12,10 @@ public:
                 const wxPoint& pos = wxDefaultPosition,
                 const wxSize& size = wxSize(88, 110));
 
-    float GetValue() const { return m_value; }
-    void  SetValue(float val, bool notify = false);
+    float     GetValue()    const { return m_value; }
+    wxString  GetKnobLabel() const { return m_label; }
+    void SetValue(float val, bool notify = false);
+    void SetKnobLabel(const wxString& s) { m_label = s; Refresh(); }
 
 private:
     void OnPaint(wxPaintEvent&);

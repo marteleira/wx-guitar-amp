@@ -1,35 +1,29 @@
 #pragma once
-#include "Biquad.h"
+#include "JCM800Model.h"
+#include "FenderDeluxeModel.h"
+#include <atomic>
 
-// JCM800 2203 signal chain:
-//   input → DC block → preamp stage 1 (gain+clip) → DC block
-//          → preamp stage 2 (gain+clip) → DC block
-//          → tone stack (bass/mid/treble) → presence shelf
-//          → master vol → power amp sim → cab sim → output
 class DspProcessor {
 public:
+    static constexpr int MODEL_COUNT = 2;
+
     void setSampleRate(unsigned int sr);
 
-    float process(float in,
-                  float preampVol, float bass, float mid,
-                  float treble, float presence, float master) noexcept;
+    // Thread-safe: called from UI thread
+    void setModel(int index);
+    int  currentModel() const { return m_current.load(std::memory_order_relaxed); }
+
+    // Called from audio thread only
+    float process(float in, float preampVol, float bass, float mid,
+                  float treble, float ch5, float master) noexcept;
+
+    AmpModel& model(int index) { return *m_models[index]; }
 
 private:
-    void rebuildToneFilters(float bass, float mid, float treble, float presence);
+    JCM800Model       m_jcm800;
+    FenderDeluxeModel m_fender;
+    AmpModel* m_models[MODEL_COUNT] = { &m_jcm800, &m_fender };
 
-    // Tube-style asymmetric soft clipper (slight bias → even harmonics)
-    static inline float tubeClip(float x) noexcept {
-        float biased = x + 0.07f;
-        // x / (1+|x|) is cheap and smooth; preserves dynamics better than tanh at low levels
-        return biased / (1.0f + (biased > 0 ? biased : -biased)) - 0.07f / 1.07f;
-    }
-
-    unsigned int m_sr = 44100;
-
-    Biquad m_dcBlock[3];   // one per stage boundary
-    Biquad m_bass, m_mid, m_treble, m_presence;
-    Biquad m_cabHP, m_cabLP, m_cabPeak1, m_cabPeak2;
-
-    // Cached param values so we only rebuild filters when something changes
-    float m_cBass = -99, m_cMid = -99, m_cTreble = -99, m_cPresence = -99;
+    std::atomic<int> m_current{0};
+    int m_last = 0;  // audio thread only — no atomic needed
 };

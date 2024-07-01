@@ -184,6 +184,12 @@ float AudioEngine::outputPeakDb() const {
     return (v > 1e-7f) ? 20.0f * std::log10(v) : -120.0f;
 }
 
+// Amp model
+
+void AudioEngine::setAmpModel(int index) { m_dsp->setModel(index); }
+int  AudioEngine::currentAmpModel() const { return m_dsp->currentModel(); }
+AmpModel& AudioEngine::ampModel(int index) { return m_dsp->model(index); }
+
 // Audio processing (runs in real-time thread)
 
 void AudioEngine::processAudio(float* out, const float* in, unsigned int frameCount) {

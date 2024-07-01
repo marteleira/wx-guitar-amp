@@ -16,6 +16,8 @@ struct Biquad {
         return static_cast<float>(y);
     }
 
+    void resetState() noexcept { x1 = x2 = y1 = y2 = 0; }
+
     void preserveStateFrom(const Biquad& src) {
         x1 = src.x1; x2 = src.x2;
         y1 = src.y1; y2 = src.y2;
