@@ -58,6 +58,7 @@ public:
     // Amp model switching (thread-safe)
     void      setAmpModel(int index);
     int       currentAmpModel() const;
+    int       ampModelCount() const;
     AmpModel& ampModel(int index);
 
     void processAudio(float* out, const float* in, unsigned int frameCount);

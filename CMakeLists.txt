@@ -17,6 +17,7 @@ set(SOURCES
     src/dsp/DspProcessor.cpp
     src/dsp/JCM800Model.cpp
     src/dsp/FenderDeluxeModel.cpp
+    src/dsp/OrangeOR120Model.cpp
     src/ui/MainFrame.cpp
     src/ui/KnobControl.cpp
     src/ui/SpectrumView.cpp

@@ -186,8 +186,9 @@ float AudioEngine::outputPeakDb() const {
 
 // Amp model
 
-void AudioEngine::setAmpModel(int index) { m_dsp->setModel(index); }
-int  AudioEngine::currentAmpModel() const { return m_dsp->currentModel(); }
+void AudioEngine::setAmpModel(int index)   { m_dsp->setModel(index); }
+int  AudioEngine::currentAmpModel() const  { return m_dsp->currentModel(); }
+int  AudioEngine::ampModelCount()   const  { return DspProcessor::MODEL_COUNT; }
 AmpModel& AudioEngine::ampModel(int index) { return m_dsp->model(index); }
 
 // Audio processing (runs in real-time thread)

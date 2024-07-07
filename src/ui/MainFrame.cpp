@@ -81,7 +81,7 @@ void MainFrame::BuildUI() {
     modelBar->SetMinSize(wxSize(1, 30));
 
     wxArrayString modelNames;
-    for (int i = 0; i < 2; ++i)
+    for (int i = 0; i < m_engine.ampModelCount(); ++i)
         modelNames.Add(wxString::FromUTF8(m_engine.ampModel(i).name()));
     m_modelChoice = new wxChoice(modelBar, ID_AMP_MODEL,
                                  wxDefaultPosition, wxDefaultSize, modelNames);
@@ -256,20 +256,27 @@ void MainFrame::OnHeaderPaint(wxPaintEvent&) {
     wxAutoBufferedPaintDC dc(m_header);
     wxSize sz = m_header->GetClientSize();
 
-    const auto& m = m_engine.ampModel(m_engine.currentAmpModel());
-    bool isFender = (m_engine.currentAmpModel() == 1);
+    const auto& m   = m_engine.ampModel(m_engine.currentAmpModel());
+    int modelIdx     = m_engine.currentAmpModel();
+
+    // Strip colour + brand text colour per brand
+    struct BrandTheme { wxColour strip; wxColour text; };
+    BrandTheme themes[] = {
+        { wxColour(120,  90,  20), wxColour(248, 240, 210) },  // 0 Marshall — gold
+        { wxColour( 35,  35,  40), wxColour(160, 200, 255) },  // 1 Fender — dark/blue
+        { wxColour(170,  65,   0), wxColour(255, 200, 100) },  // 2 Orange — orange
+    };
+    auto theme = (modelIdx >= 0 && modelIdx < 3) ? themes[modelIdx] : themes[0];
 
     dc.SetBackground(wxBrush(wxColour(18, 18, 18)));
     dc.Clear();
 
-    // Brand strip: gold for Marshall, dark chrome for Fender
-    wxColour stripCol = isFender ? wxColour(35, 35, 40) : wxColour(120, 90, 20);
-    dc.SetBrush(wxBrush(stripCol));
+    dc.SetBrush(wxBrush(theme.strip));
     dc.SetPen(*wxTRANSPARENT_PEN);
     dc.DrawRectangle(0, 0, 220, sz.y);
 
     dc.SetFont(wxFont(22, wxFONTFAMILY_SWISS, wxFONTSTYLE_ITALIC, wxFONTWEIGHT_BOLD));
-    dc.SetTextForeground(isFender ? wxColour(160, 200, 255) : wxColour(248, 240, 210));
+    dc.SetTextForeground(theme.text);
     dc.DrawText(m.brand(), 10, 8);
 
     dc.SetFont(wxFont(11, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL, wxFONTWEIGHT_NORMAL));
