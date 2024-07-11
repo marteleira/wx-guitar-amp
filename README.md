@@ -1,91 +1,106 @@
 # wx-guitar-amp
 
-A real-time guitar amplifier simulator written from scratch in C++
-Models a **Marshall JCM800 2203** - preamp gain staging, passive tone stack, power amp saturation and cabinet simulation, all implemented as hand-written DSP without any effects libraries.
+Real-time guitar amp simulator in C++. No effects libraries, everything DSP is written from scratch. Plug in a guitar, pick an amp, play.
+
+Currently models three amps:
+
+- **Marshall JCM800 2203** - the classic British crunch/high gain. Two cascaded 12AX7 stages, passive tone stack with inverted mid, EL34 push-pull, 4x12 Greenback cab.
+- **Fender Deluxe Reverb '65** - single 12AX7, way more headroom, cubic soft clip, Fender tone stack (mid not inverted, bass sits lower at 100Hz), 6V6 power amp, 1x12 Jensen cab.
+- **Orange OR120** - 120W, asymmetric cathode-follower clip, mid centred at 900Hz, Vintage 30 4x12 with the characteristic 850Hz honk. Bigger and warmer than the Marshall.
 
 ![screenshot](res/screenshot.png)
 
 ---
 
 ## Signal chain
-AI gen scheme:
+
+Each amp model follows the same stages but with different component values, clipping functions and cabinet tuning:
+
 ```
-              Guitar input (mono)
-                    │
-                    ▼
-┌─────────────────────────────────────────────────────────┐
-│  Preamp  (2× 12AX7 triode stages)                       │
-│                                                         │
-│  DC block → gain stage 1 → asymmetric soft clip         │
-│          → gain stage 2 → asymmetric soft clip          │
-│          → DC block                                     │
-└────────────────────┬────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────┐
-│  Passive tone stack  (Marshall 2203 topology)           │
-│                                                         │
-│  Bass low-shelf (200 Hz)                                │
-│  Mid  peaking   (700 Hz, inverted control)              │
-│  Treble high-shelf (2.2 kHz)                            │
-│  Presence high-shelf (5 kHz)                            │
-└────────────────────┬────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────┐
-│  Power amp  (EL34 push-pull simulation)                 │
-│                                                         │
-│  tanh saturation · master volume drives clipping level  │
-└────────────────────┬────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────┐
-│  Cabinet sim  (4×12 Marshall closed-back)               │
-│                                                         │
-│  HP 80 Hz · peak 2.2 kHz · LP 6.5 kHz · peak 4.5 kHz    │
-└────────────────────┬────────────────────────────────────┘
-                     │
-                     ▼
-              Stereo output
+guitar in (mono)
+    |
+    v
+DC block (removes cable offset)
+    |
+    v
+preamp stages (1 or 2x 12AX7, gain + soft clip)
+    |
+    v
+tone stack (bass / mid / treble biquads)
+    |
+    v
+ch5 control (presence / bright cap / top boost depending on model)
+    |
+    v
+power amp (tanh saturation, drive scales with master volume)
+    |
+    v
+cab sim (3-5 biquads tuned per speaker type)
+    |
+    v
+stereo out
 ```
 
 ---
 
-## Controls
+## Amp models
 
-| Knob | Range | What it does |
-|---|---|---|
-| **Preamp Volume** | 0 – 10 | Input gain into the two cascaded tube stages. Low = clean, mid = crunch, high = full saturation |
-| **Bass** | 0 – 10 | Low shelf at 200 Hz, ±12 dB |
-| **Middle** | 0 – 10 | Peaking EQ at 700 Hz — **inverted**, like the real circuit. Noon = maximum cut, not boost |
-| **Treble** | 0 – 10 | High shelf at 2.2 kHz, ±12 dB |
-| **Presence** | 0 – 10 | High shelf at 5 kHz, 0 → +12 dB. Adds bite and aggression |
-| **Master Volume** | 0 – 10 | Output level and power amp drive. Higher = more EL34 saturation |
+### Marshall JCM800 2203
+
+Two gain stages, both using `x / (1 + |x|)` with a small DC bias to get asymmetric clipping -> even harmonics -> warmth. The mid control is **inverted** (noon = max cut), exactly like the real circuit. At high preamp volume the two stages compound hard and you get the classic JCM800 compression.
+
+Cab: 4x12 Marshall closed-back. HP 80Hz, peak 2.2kHz (+4dB), LP 6.5kHz, peak 4.5kHz (+2dB).
+
+### Fender Deluxe Reverb '65
+
+Single gain stage, `x - x^3/3` cubic clipper (smoother, second-harmonic character). Much more headroom - noon on the volume knob is still pretty clean. Mid is not inverted and sits at 400Hz instead of 700Hz. The Bright knob adds a high shelf at 8kHz, which is what the bright cap on the original volume pot does.
+
+Cab: 1x12 Jensen P12R. Rolls off at 8kHz, peak at 1.2kHz (+3.5dB), peak at 3.5kHz (+2.5dB). More mid-forward than the 4x12.
+
+### Orange OR120
+
+Asymmetric clip: positive half `x / (1 + x*0.75)`, negative half `x / (1 - x*1.1)`. The difference between the two sides is what gives Orange amps the warmer, more complex distortion vs the Marshall. Mid sits at 900Hz (not 700) and is not inverted. Top Boost simulates plugging into the high-gain input jack - adds gain and a 6kHz shelf simultaneously.
+
+Cab: 4x12 Vintage 30. The V30 has a notorious dip around 250Hz (low-mid suck-out) and a strong peak at 850Hz - that's the "honk" you hear on Orange recordings. Five biquads total to model it properly.
 
 ---
 
-## DSP notes
+## Architecture
 
-**Biquad filters** — all EQ and simulation stages are second-order IIR filters implemented from scratch using (inspired a lot on) the Audio EQ Cookbook (Bristow-Johnson). State is stored as `double` to prevent precision loss in feedback paths.
+The three amps implement an `AmpModel` interface (strategy pattern):
 
-**Tube clipping** — uses an asymmetric soft clipper with a slight DC bias before the nonlinearity. This produces even-order harmonics (2nd, 4th) in addition to odd-order ones, which is what gives valve amps their characteristic warmth compared to symmetric transistor clipping.
+```
+AmpModel (pure virtual)
+    process(in, preampVol, bass, mid, treble, ch5, master) -> float
+    resetState()
+    name() / brand() / subtitle()
+    knobLabels() / knobDefaults()
 
-**Thread safety** — the audio callback runs on a dedicated real-time thread. All parameters are `std::atomic<float>`, written by the UI thread and read lock-free by the audio thread, the filter coefficients are rebuilt inside the audio thread whenever a parameter changes, the state is preserved across rebuilds to prevent clicks.
+JCM800Model    : AmpModel
+FenderDeluxeModel : AmpModel
+OrangeOR120Model  : AmpModel
+```
 
-**Cabinet simulation** - approximated with a chain of four biquads tuned to the frequency response of a Marshall 1960 4x12 with Celestion G12T-75 speakers, loading IR files is on the roadmap.
+`DspProcessor` owns all three instances and dispatches to whichever is active via `std::atomic<int>`. When you switch models the audio thread detects the change, calls `resetState()` on the new model (zeroes all biquad state), and starts using it. No locks, no allocation in the audio path.
+
+UI thread -> writes to `std::atomic<float>` params -> audio thread reads them lock-free each callback. Filter coefficients are rebuilt inside the audio thread when a param changes, state is preserved across rebuilds to avoid clicks.
+
+---
+
+## UI
+
+- **Spectrum analyzer** - 1024-point FFT (Cooley-Tukey, written from scratch), Hanning window, log frequency axis 20Hz-20kHz. Input in blue, output in green. Runs at 20fps via wxTimer.
+- **Device selection** - input and output device dropdowns populated from miniaudio's enumeration. Changing device does a hot restart (uninit + reinit the device, context stays alive).
+- **Input/output gain** - sliders 0-200%, applied before/after the DSP. Peak meters update at 20fps with exponential decay (~300ms hold).
+- **6 knobs** - labels and defaults change when you switch amp model.
 
 ---
 
 ## Building
 
-### Dependencies
+Dependencies: C++17, CMake 3.16+, wxWidgets 3.2+. miniaudio is included as a single header.
 
-- C++17 compiler (GCC 12+ or Clang 15+)
-- CMake 3.16+
-- wxWidgets 3.2+ (`wxwidgets-gtk3` on Arch)
-- miniaudio — included as a single header (`miniaudio.h`)
-
-**Arch Linux (the best):**
+**Arch:**
 ```bash
 sudo pacman -S wxwidgets-gtk3 cmake base-devel
 ```
@@ -95,27 +110,29 @@ sudo pacman -S wxwidgets-gtk3 cmake base-devel
 sudo apt install libwxgtk3.2-dev cmake build-essential
 ```
 
-### Compile
-
+**Build:**
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -- -j$(nproc)
+cmake --build build -j$(nproc)
 ./build/WxGuitarAmp
 ```
 
 ---
 
-## Stack
+## Roadmap
 
-| Component | Technology |
-|---|---|
-| UI | [wxWidgets](https://www.wxwidgets.org/) 3.2 |
-| Audio I/O | [miniaudio](https://miniaud.io/) (single-header, no dependencies) |
-| DSP | Hand-written C++ (no effects libraries) |
-| Build | CMake |
+- IR convolution cab sim (load real .wav IR files)
+- Noise gate
+- Delay / spring reverb
+- JACK support
+- Preset save/load
+- Mesa Boogie Dual Rectifier (different again - silicon diode rectifier, 5 gain stages)
 
 ---
 
-## License
+## Stack
 
-MIT
+- UI -> wxWidgets 3.2
+- Audio I/O -> miniaudio (single header, no deps)
+- DSP -> hand-written C++, no effects libraries
+- Build -> CMake
