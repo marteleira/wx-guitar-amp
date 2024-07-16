@@ -13,6 +13,7 @@ include(${wxWidgets_USE_FILE})
 
 set(SOURCES
     src/main.cpp
+    src/Persistence.cpp
     src/audio/AudioEngine.cpp
     src/dsp/DspProcessor.cpp
     src/dsp/JCM800Model.cpp

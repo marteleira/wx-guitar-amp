@@ -1,6 +1,7 @@
 #include <wx/wx.h>
 #include "audio/AudioEngine.h"
 #include "ui/MainFrame.h"
+#include "Persistence.h"
 
 class GuitarAmpApp : public wxApp {
 public:
@@ -17,6 +18,12 @@ public:
         }
 
         auto* frame = new MainFrame(*m_engine);
+
+        // Restore last session — if state file doesn't exist, load() returns
+        // the curated defaults baked into Persistence::load().
+        AppState state = Persistence::load(Persistence::defaultPath());
+        frame->applyState(state);
+
         frame->Show();
         return true;
     }

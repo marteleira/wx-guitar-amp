@@ -189,32 +189,37 @@ void MainFrame::BuildUI() {
     ioRow->Add(outCol,     0, wxEXPAND);
     ioPanel->SetSizer(ioRow);
 
-    // Knob panel 
+    // Init per-model saved knob state from each model's curated defaults
+    for (int mi = 0; mi < 3; ++mi) {
+        auto defs = m_engine.ampModel(mi).knobDefaults();
+        for (int i = 0; i < 6; ++i)
+            m_savedKnobs[mi][i] = defs[i];
+    }
+
+    // Knob panel — labels and initial values come from model 0 (JCM800)
     auto* knobPanel = new wxPanel(this, wxID_ANY);
     knobPanel->SetBackgroundColour(wxColour(22, 22, 22));
 
-    struct KnobDef { wxString label; float def; std::atomic<float>* param; };
-    KnobDef defs[] = {
-        { "PREAMP\nVOLUME", 5.0f, &m_engine.params.preampVol },
-        { "BASS",           5.0f, &m_engine.params.bass      },
-        { "MIDDLE",         5.0f, &m_engine.params.mid       },
-        { "TREBLE",         5.0f, &m_engine.params.treble    },
-        { "PRESENCE",       5.0f, &m_engine.params.presence  },
-        { "MASTER\nVOLUME", 4.0f, &m_engine.params.master    },
+    std::atomic<float>* kParams[] = {
+        &m_engine.params.preampVol, &m_engine.params.bass,
+        &m_engine.params.mid,       &m_engine.params.treble,
+        &m_engine.params.presence,  &m_engine.params.master,
     };
-    KnobControl** targets[] = {
+    KnobControl** kTargets[] = {
         &m_kPreamp, &m_kBass, &m_kMid, &m_kTreble, &m_kPresence, &m_kMaster
     };
+    auto initLabels = m_engine.ampModel(0).knobLabels();
 
     auto* knobRow = new wxBoxSizer(wxHORIZONTAL);
     knobRow->AddSpacer(PAD);
     for (int i = 0; i < 6; ++i) {
+        float v = m_savedKnobs[0][i];
         auto* k = new KnobControl(knobPanel, wxID_ANY,
-                                  defs[i].label, 0.0f, 10.0f, defs[i].def,
+                                  initLabels[i], 0.0f, 10.0f, v,
                                   wxDefaultPosition, wxSize(KNOB_W, KNOB_H));
-        defs[i].param->store(defs[i].def, std::memory_order_relaxed);
+        kParams[i]->store(v, std::memory_order_relaxed);
         k->Bind(wxEVT_KNOB_CHANGED, &MainFrame::OnKnobChanged, this);
-        *targets[i] = k;
+        *kTargets[i] = k;
         knobRow->Add(k, 0, wxTOP | wxBOTTOM, PAD);
         if (i < 5) knobRow->AddSpacer(PAD);
     }
@@ -233,23 +238,107 @@ void MainFrame::BuildUI() {
 
 // Event handlers 
 
-void MainFrame::ApplyModelToUI(int index) {
-    auto& m = m_engine.ampModel(index);
-    auto labels = m.knobLabels();
-    auto defs   = m.knobDefaults();
+// Knob state helpers
 
-    KnobControl* knobs[] = { m_kPreamp, m_kBass, m_kMid, m_kTreble, m_kPresence, m_kMaster };
+void MainFrame::SyncKnobsToSaved() {
+    int idx = m_engine.currentAmpModel();
+    KnobControl* ks[] = { m_kPreamp, m_kBass, m_kMid, m_kTreble, m_kPresence, m_kMaster };
+    for (int i = 0; i < 6; ++i)
+        m_savedKnobs[idx][i] = ks[i]->GetValue();
+}
+
+void MainFrame::RestoreModelKnobs(int index) {
+    const float* v = m_savedKnobs[index];
+    auto labels = m_engine.ampModel(index).knobLabels();
+    KnobControl* ks[] = { m_kPreamp, m_kBass, m_kMid, m_kTreble, m_kPresence, m_kMaster };
+
+    // notify=false: avoid OnKnobChanged -> SyncKnobsToSaved firing mid-loop,
+    // which would overwrite the not-yet-set knobs with stale BuildUI values.
     for (int i = 0; i < 6; ++i) {
-        knobs[i]->SetKnobLabel(labels[i]);
-        knobs[i]->SetValue(defs[i], true);
+        ks[i]->SetKnobLabel(labels[i]);
+        ks[i]->SetValue(v[i], false);
     }
+
+    // Push all values to the audio engine atomics in one shot
+    m_engine.params.preampVol.store(v[0], std::memory_order_relaxed);
+    m_engine.params.bass.store     (v[1], std::memory_order_relaxed);
+    m_engine.params.mid.store      (v[2], std::memory_order_relaxed);
+    m_engine.params.treble.store   (v[3], std::memory_order_relaxed);
+    m_engine.params.presence.store (v[4], std::memory_order_relaxed);
+    m_engine.params.master.store   (v[5], std::memory_order_relaxed);
+
     m_header->Refresh();
 }
 
+// Persistence
+
+AppState MainFrame::getState() {
+    SyncKnobsToSaved();
+    AppState s;
+    s.currentModel     = m_engine.currentAmpModel();
+    s.inputGain        = m_inGainSlider->GetValue();
+    s.outputGain       = m_outGainSlider->GetValue();
+    s.inputDeviceName  = m_inDevChoice->GetStringSelection().ToStdString();
+    s.outputDeviceName = m_outDevChoice->GetStringSelection().ToStdString();
+    for (int m = 0; m < 3; ++m)
+        for (int i = 0; i < 6; ++i)
+            s.models[m].vals[i] = m_savedKnobs[m][i];
+    return s;
+}
+
+void MainFrame::applyState(const AppState& s) {
+    // Load all per-model knob values
+    for (int m = 0; m < 3; ++m)
+        for (int i = 0; i < 6; ++i)
+            m_savedKnobs[m][i] = s.models[m].vals[i];
+
+    // Switch to saved model
+    int idx = (s.currentModel >= 0 && s.currentModel < 3) ? s.currentModel : 0;
+    m_modelChoice->SetSelection(idx);
+    m_engine.setAmpModel(idx);
+    RestoreModelKnobs(idx);
+
+    // Gains
+    m_inGainSlider->SetValue(s.inputGain);
+    m_outGainSlider->SetValue(s.outputGain);
+    m_engine.params.inputGain.store (s.inputGain  / 100.0f, std::memory_order_relaxed);
+    m_engine.params.outputGain.store(s.outputGain / 100.0f, std::memory_order_relaxed);
+
+    // Devices — find by name, restart if something changed
+    bool devChanged = false;
+    auto findDevice = [&](wxChoice* choice, const std::string& name) -> int {
+        if (name.empty()) return -1;
+        for (int i = 0; i < (int)choice->GetCount(); ++i)
+            if (choice->GetString(i).ToStdString() == name) return i;
+        return -1;
+    };
+
+    int inIdx  = findDevice(m_inDevChoice,  s.inputDeviceName);
+    int outIdx = findDevice(m_outDevChoice, s.outputDeviceName);
+
+    if (inIdx >= 0 && inIdx != m_inDevChoice->GetSelection()) {
+        m_inDevChoice->SetSelection(inIdx);
+        m_engine.setInputDevice(inIdx);
+        devChanged = true;
+    }
+    if (outIdx >= 0 && outIdx != m_outDevChoice->GetSelection()) {
+        m_outDevChoice->SetSelection(outIdx);
+        m_engine.setOutputDevice(outIdx);
+        devChanged = true;
+    }
+    if (devChanged) {
+        m_engine.restart();
+        SetStatusText(wxString::Format("Audio running  |  %u Hz", m_engine.getSampleRate()));
+    }
+}
+
+// Model switch 
+
 void MainFrame::OnModelChanged(wxCommandEvent& evt) {
+    SyncKnobsToSaved();          // save current model's knob positions
     int sel = evt.GetSelection();
     m_engine.setAmpModel(sel);
-    ApplyModelToUI(sel);
+    RestoreModelKnobs(sel);      // load saved positions for new model
 }
 
 void MainFrame::OnHeaderPaint(wxPaintEvent&) {
@@ -306,6 +395,7 @@ void MainFrame::OnKnobChanged(wxCommandEvent& evt) {
     else if (k == m_kTreble)   m_engine.params.treble.store(v,    std::memory_order_relaxed);
     else if (k == m_kPresence) m_engine.params.presence.store(v,  std::memory_order_relaxed);
     else if (k == m_kMaster)   m_engine.params.master.store(v,    std::memory_order_relaxed);
+    SyncKnobsToSaved();
 }
 
 void MainFrame::OnInputDevice(wxCommandEvent& evt) {
@@ -360,6 +450,7 @@ void MainFrame::OnTimer(wxTimerEvent&) {
 
 void MainFrame::OnClose(wxCloseEvent& evt) {
     m_timer.Stop();
+    Persistence::save(getState(), Persistence::defaultPath());
     m_engine.shutdown();
     evt.Skip();
 }
