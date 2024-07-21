@@ -1,12 +1,13 @@
 #pragma once
-#include "JCM800Model.h"
-#include "FenderDeluxeModel.h"
-#include "OrangeOR120Model.h"
+#include "models/JCM800Model.h"
+#include "models/FenderDeluxeModel.h"
+#include "models/OrangeOR120Model.h"
+#include "models/VoxAC30Model.h"
 #include <atomic>
 
 class DspProcessor {
 public:
-    static constexpr int MODEL_COUNT = 3;
+    static constexpr int MODEL_COUNT = 4;
 
     void setSampleRate(unsigned int sr);
     void setModel(int index);
@@ -21,8 +22,9 @@ private:
     JCM800Model       m_jcm800;
     FenderDeluxeModel m_fender;
     OrangeOR120Model  m_orange;
+    VoxAC30Model      m_vox;
 
-    AmpModel* m_models[MODEL_COUNT] = { &m_jcm800, &m_fender, &m_orange };
+    AmpModel* m_models[MODEL_COUNT] = { &m_jcm800, &m_fender, &m_orange, &m_vox };
 
     std::atomic<int> m_current{0};
     int m_last = 0;

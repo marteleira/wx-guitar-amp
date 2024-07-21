@@ -72,19 +72,19 @@ AppState Persistence::load(const std::string& path) {
     s.inputDeviceName  = getS(ini, "state", "inputDevice");
     s.outputDeviceName = getS(ini, "state", "outputDevice");
 
-    // Clamp model index in case file is corrupted
-    if (s.currentModel < 0 || s.currentModel > 2) s.currentModel = 0;
+    if (s.currentModel < 0 || s.currentModel >= AMP_MODEL_COUNT) s.currentModel = 0;
 
     static const char* keys[] = { "preampVol", "bass", "mid", "treble", "ch5", "master" };
 
     // Default values per model (curated to sound good out of the box)
-    static const float defaults[3][6] = {
+    static const float defaults[AMP_MODEL_COUNT][6] = {
         { 7.0f, 5.0f, 4.0f, 6.0f, 5.0f, 4.0f },  // JCM800 - classic rock crunch
         { 5.0f, 6.0f, 5.0f, 7.0f, 4.0f, 7.0f },  // Fender - sparkly clean
         { 6.0f, 5.0f, 7.0f, 5.0f, 4.0f, 5.0f },  // Orange - mid-heavy crunch
+        { 5.0f, 4.0f, 6.5f, 2.5f, 4.0f, 6.0f },  // Vox AC30 - bright jangle
     };
 
-    for (int m = 0; m < 3; ++m) {
+    for (int m = 0; m < AMP_MODEL_COUNT; ++m) {
         std::string sec = "model" + std::to_string(m);
         for (int i = 0; i < 6; ++i)
             s.models[m].vals[i] = getF(ini, sec, keys[i], defaults[m][i]);
@@ -110,7 +110,7 @@ void Persistence::save(const AppState& s, const std::string& path) {
     f << "outputDevice=" << s.outputDeviceName   << "\n\n";
 
     static const char* keys[] = { "preampVol", "bass", "mid", "treble", "ch5", "master" };
-    for (int m = 0; m < 3; ++m) {
+    for (int m = 0; m < AMP_MODEL_COUNT; ++m) {
         f << "[model" << m << "]\n";
         for (int i = 0; i < 6; ++i)
             f << keys[i] << "=" << s.models[m].vals[i] << "\n";

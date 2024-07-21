@@ -190,7 +190,7 @@ void MainFrame::BuildUI() {
     ioPanel->SetSizer(ioRow);
 
     // Init per-model saved knob state from each model's curated defaults
-    for (int mi = 0; mi < 3; ++mi) {
+    for (int mi = 0; mi < AMP_MODEL_COUNT; ++mi) {
         auto defs = m_engine.ampModel(mi).knobDefaults();
         for (int i = 0; i < 6; ++i)
             m_savedKnobs[mi][i] = defs[i];
@@ -280,7 +280,7 @@ AppState MainFrame::getState() {
     s.outputGain       = m_outGainSlider->GetValue();
     s.inputDeviceName  = m_inDevChoice->GetStringSelection().ToStdString();
     s.outputDeviceName = m_outDevChoice->GetStringSelection().ToStdString();
-    for (int m = 0; m < 3; ++m)
+    for (int m = 0; m < AMP_MODEL_COUNT; ++m)
         for (int i = 0; i < 6; ++i)
             s.models[m].vals[i] = m_savedKnobs[m][i];
     return s;
@@ -288,7 +288,7 @@ AppState MainFrame::getState() {
 
 void MainFrame::applyState(const AppState& s) {
     // Load all per-model knob values
-    for (int m = 0; m < 3; ++m)
+    for (int m = 0; m < AMP_MODEL_COUNT; ++m)
         for (int i = 0; i < 6; ++i)
             m_savedKnobs[m][i] = s.models[m].vals[i];
 
@@ -354,8 +354,9 @@ void MainFrame::OnHeaderPaint(wxPaintEvent&) {
         { wxColour(120,  90,  20), wxColour(248, 240, 210) },  // 0 Marshall — gold
         { wxColour( 35,  35,  40), wxColour(160, 200, 255) },  // 1 Fender — dark/blue
         { wxColour(170,  65,   0), wxColour(255, 200, 100) },  // 2 Orange — orange
+        { wxColour( 18,  18,  40), wxColour(220, 220, 185) },  // 3 Vox — dark navy/cream
     };
-    auto theme = (modelIdx >= 0 && modelIdx < 3) ? themes[modelIdx] : themes[0];
+    auto theme = (modelIdx >= 0 && modelIdx < AMP_MODEL_COUNT) ? themes[modelIdx] : themes[0];
 
     dc.SetBackground(wxBrush(wxColour(18, 18, 18)));
     dc.Clear();

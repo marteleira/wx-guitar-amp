@@ -16,9 +16,10 @@ set(SOURCES
     src/Persistence.cpp
     src/audio/AudioEngine.cpp
     src/dsp/DspProcessor.cpp
-    src/dsp/JCM800Model.cpp
-    src/dsp/FenderDeluxeModel.cpp
-    src/dsp/OrangeOR120Model.cpp
+    src/dsp/models/JCM800Model.cpp
+    src/dsp/models/FenderDeluxeModel.cpp
+    src/dsp/models/OrangeOR120Model.cpp
+    src/dsp/models/VoxAC30Model.cpp
     src/ui/MainFrame.cpp
     src/ui/KnobControl.cpp
     src/ui/SpectrumView.cpp
@@ -29,6 +30,7 @@ add_executable(WxGuitarAmp ${SOURCES})
 target_include_directories(WxGuitarAmp PRIVATE
     ${CMAKE_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/dsp   # models/ can include Biquad.h and AmpModel.h directly
 )
 
 target_link_libraries(WxGuitarAmp

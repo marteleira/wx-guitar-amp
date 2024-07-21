@@ -53,7 +53,7 @@ private:
     KnobControl* m_kMaster   = nullptr;
 
     // Per-model knob state — updated on every knob change and on model switch
-    float m_savedKnobs[3][6] = {};
+    float m_savedKnobs[AMP_MODEL_COUNT][6] = {};
 
     wxTimer m_timer;
 
